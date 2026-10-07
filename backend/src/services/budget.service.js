@@ -11,40 +11,58 @@ const MIN_COSTS = {
   CHF: { flight: 350, hotelNight: 120, foodDay: 40, activityDay: 25 },
 };
 
-/** Share of total trip budget when AI allocation is missing */
-const BUDGET_SHARES = {
-  flights: 0.4,
-  hotels: 0.3,
-  food: 0.15,
-  activities: 0.1,
-  emergencyBuffer: 0.05,
-};
+const CATEGORY_KEYS = ['flights', 'hotels', 'food', 'activities', 'emergencyBuffer'];
 
 function tripDays(fromDate, toDate) {
   if (!fromDate || !toDate) return 3;
-  const ms = new Date(toDate) - new Date(fromDate);
-  return Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)) + 1);
+  const from = new Date(`${String(fromDate).slice(0, 10)}T12:00:00`);
+  const to = new Date(`${String(toDate).slice(0, 10)}T12:00:00`);
+  const ms = to - from;
+  return Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)) + 1);
 }
 
 function avgPrice(items) {
-  const prices = (items || []).map((i) => Number(i?.price)).filter((n) => Number.isFinite(n) && n > 0);
+  const prices = (items || [])
+    .map((i) => Number(i?.price ?? i?.estimatedCost))
+    .filter((n) => Number.isFinite(n) && n > 0);
   if (!prices.length) return null;
   return Math.round(prices.reduce((a, b) => a + b, 0) / prices.length);
 }
 
+function minPrice(items) {
+  const prices = (items || [])
+    .map((i) => Number(i?.price ?? i?.estimatedCost))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  if (!prices.length) return null;
+  return Math.min(...prices);
+}
+
+function sumActivityCosts(activities = []) {
+  const sum = activities.reduce((s, a) => s + (Number(a?.estimatedCost) || 0), 0);
+  return sum > 0 ? Math.round(sum) : null;
+}
+
+/** True when category line-items are missing or all zero (ignore total). */
 export function isBudgetEmpty(budget) {
   if (!budget || typeof budget !== 'object') return true;
-  const keys = ['flights', 'hotels', 'food', 'activities', 'emergencyBuffer', 'total'];
-  return keys.every((k) => !Number(budget[k]));
+  return CATEGORY_KEYS.every((k) => !Number(budget[k]));
 }
 
 /**
- * Build a real budget allocation from the user's total + live prices when available.
- * Always returns non-zero values when budget > 0.
+ * Estimate category costs from THIS trip's data:
+ * - Flights: cheapest/avg live price × travellers, else regional baseline
+ * - Hotels: nightly × nights, else regional baseline
+ * - Food / activities: per-day estimates × days × travellers (activities prefer AI costs)
+ * - Buffer: ~8% of the sum of the above estimates
+ *
+ * Then scale those relative estimates into the user's total budget so splits
+ * flex with trip length, travellers, and live prices — not fixed % templates.
  */
 export function allocateBudget(tripInput, apiData = {}) {
   const totalBudget = Math.max(0, Number(tripInput.budget) || 0);
-  const travellers = Number(tripInput.travellers) || 1;
+  const travellers = Math.max(1, Number(tripInput.travellers) || 1);
+  const currency = tripInput.currency || 'USD';
+  const costs = MIN_COSTS[currency] || MIN_COSTS.USD;
   const days = tripDays(tripInput.fromDate, tripInput.toDate);
   const nights = Math.max(1, days - 1);
 
@@ -59,25 +77,28 @@ export function allocateBudget(tripInput, apiData = {}) {
     };
   }
 
-  const flightAvg = avgPrice(apiData.flights);
-  const hotelNightly = avgPrice(apiData.hotels);
+  const flightUnit = minPrice(apiData.flights) ?? avgPrice(apiData.flights) ?? costs.flight;
+  const hotelNightly = avgPrice(apiData.hotels) ?? costs.hotelNight;
+  const activityHint = sumActivityCosts(apiData.activities);
 
-  let flights = flightAvg != null
-    ? Math.round(flightAvg * travellers)
-    : Math.round(totalBudget * BUDGET_SHARES.flights);
+  // Raw estimates in trip currency (flexible with duration / party size / live quotes)
+  let flights = Math.round(flightUnit * travellers);
+  let hotels = Math.round(hotelNightly * nights);
+  let food = Math.round(costs.foodDay * days * travellers);
+  let activities = activityHint != null
+    ? Math.round(activityHint)
+    : Math.round(costs.activityDay * days * travellers);
 
-  let hotels = hotelNightly != null
-    ? Math.round(hotelNightly * nights)
-    : Math.round(totalBudget * BUDGET_SHARES.hotels);
+  // Soft floor so short free-activity lists don't collapse the slice to ~0
+  activities = Math.max(activities, Math.round(costs.activityDay * Math.min(days, 3) * travellers * 0.5));
 
-  let food = Math.round(totalBudget * BUDGET_SHARES.food);
-  let activities = Math.round(totalBudget * BUDGET_SHARES.activities);
-  let emergencyBuffer = Math.round(totalBudget * BUDGET_SHARES.emergencyBuffer);
+  let core = flights + hotels + food + activities;
+  let emergencyBuffer = Math.max(Math.round(core * 0.08), Math.round(totalBudget * 0.03));
 
   let allocated = flights + hotels + food + activities + emergencyBuffer;
 
-  // Scale proportionally into the user's total when live prices overshoot / undershoot
-  if (allocated > 0 && allocated !== totalBudget) {
+  // Fit into the user's stated budget while keeping relative weights
+  if (allocated > 0) {
     const scale = totalBudget / allocated;
     flights = Math.round(flights * scale);
     hotels = Math.round(hotels * scale);
@@ -96,12 +117,51 @@ export function allocateBudget(tripInput, apiData = {}) {
   };
 }
 
+/**
+ * Prefer AI numbers when they look real; otherwise use estimate-based allocation.
+ * Always scale category totals to the user's budget.
+ */
 export function resolveBudgetAllocation(aiBudget, tripInput, apiData = {}) {
-  if (!isBudgetEmpty(aiBudget)) {
-    const total = Number(aiBudget.total) || Object.values(aiBudget).reduce((s, v) => s + (Number(v) || 0), 0);
-    return { ...aiBudget, total: total || Number(tripInput.budget) || 0 };
+  const estimated = allocateBudget(tripInput, {
+    ...apiData,
+    activities: apiData.activities || aiBudget?.activities,
+  });
+
+  const totalBudget = Math.max(0, Number(tripInput.budget) || estimated.total || 0);
+  if (totalBudget <= 0) return estimated;
+
+  if (isBudgetEmpty(aiBudget)) {
+    return { ...estimated, total: totalBudget };
   }
-  return allocateBudget(tripInput, apiData);
+
+  // Merge: use AI value when > 0, else estimated
+  let flights = Number(aiBudget.flights) > 0 ? Number(aiBudget.flights) : estimated.flights;
+  let hotels = Number(aiBudget.hotels) > 0 ? Number(aiBudget.hotels) : estimated.hotels;
+  let food = Number(aiBudget.food) > 0 ? Number(aiBudget.food) : estimated.food;
+  let activities = Number(aiBudget.activities) > 0 ? Number(aiBudget.activities) : estimated.activities;
+  let emergencyBuffer =
+    Number(aiBudget.emergencyBuffer) > 0 ? Number(aiBudget.emergencyBuffer) : estimated.emergencyBuffer;
+
+  let allocated = flights + hotels + food + activities + emergencyBuffer;
+  if (allocated <= 0) return { ...estimated, total: totalBudget };
+
+  if (allocated !== totalBudget) {
+    const scale = totalBudget / allocated;
+    flights = Math.round(flights * scale);
+    hotels = Math.round(hotels * scale);
+    food = Math.round(food * scale);
+    activities = Math.round(activities * scale);
+    emergencyBuffer = Math.max(0, totalBudget - flights - hotels - food - activities);
+  }
+
+  return {
+    flights,
+    hotels,
+    food,
+    activities,
+    emergencyBuffer,
+    total: totalBudget,
+  };
 }
 
 export function assessBudget(tripInput) {

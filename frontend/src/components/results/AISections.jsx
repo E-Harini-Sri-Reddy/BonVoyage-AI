@@ -4,6 +4,7 @@ import { formatDate } from '../../utils/formatters';
 import FavoritesButton from '../common/FavoritesButton';
 import { usePackingChecklistForTrip } from '../../hooks/usePackingChecklist';
 import { useTrip } from '../../context/TripContext';
+import { resolveDisplayBudget } from '../../utils/budgetAllocation';
 
 export function OptimizerItinerarySection({ optimizer, itinerary }) {
   if (!optimizer && !itinerary?.length) return null;
@@ -119,26 +120,27 @@ export function ItinerarySection({ itinerary }) {
   );
 }
 
-function allocateClientBudget(totalBudget) {
-  const total = Math.max(0, Number(totalBudget) || 0);
-  if (!total) return null;
-  const flights = Math.round(total * 0.4);
-  const hotels = Math.round(total * 0.3);
-  const food = Math.round(total * 0.15);
-  const activities = Math.round(total * 0.1);
-  const emergencyBuffer = Math.max(0, total - flights - hotels - food - activities);
-  return { flights, hotels, food, activities, emergencyBuffer, total };
-}
-
-function isZeroBudget(budget) {
-  if (!budget) return true;
-  return ['flights', 'hotels', 'food', 'activities', 'emergencyBuffer', 'total'].every(
-    (k) => !Number(budget[k])
-  );
-}
-
-export function BudgetSection({ budget, currency, totalBudget }) {
-  const resolved = isZeroBudget(budget) ? allocateClientBudget(totalBudget) : budget;
+export function BudgetSection({
+  budget,
+  currency,
+  totalBudget,
+  flights,
+  hotels,
+  activities,
+  travellers,
+  fromDate,
+  toDate,
+}) {
+  const resolved = resolveDisplayBudget(budget, {
+    totalBudget,
+    currency,
+    travellers,
+    fromDate,
+    toDate,
+    flights,
+    hotels,
+    activities,
+  });
   if (!resolved) return null;
 
   const items = [

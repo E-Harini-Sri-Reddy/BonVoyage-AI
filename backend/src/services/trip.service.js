@@ -27,6 +27,22 @@ function ensureFullItinerary(result, tripInput) {
   };
 }
 
+function ensureBudget(result, tripInput) {
+  if (!result) return result;
+  return {
+    ...result,
+    budget: resolveBudgetAllocation(result.budget, tripInput, {
+      flights: result.flights,
+      hotels: result.hotels,
+      activities: result.activities,
+    }),
+  };
+}
+
+function finalizePlan(result, tripInput) {
+  return ensureBudget(ensureFullItinerary(result, tripInput), tripInput);
+}
+
 export async function aggregateTripPlan(tripInput, options = {}) {
   const { regenerateAIOnly = false } = options;
   const cacheKey = buildPlanCacheKey(tripInput);
@@ -55,6 +71,7 @@ export async function aggregateTripPlan(tripInput, options = {}) {
         budget: resolveBudgetAllocation(aiResult.budget, tripInput, {
           flights,
           hotels: cached.hotels,
+          activities: aiResult.activities,
         }),
         packing: aiResult.packing,
         summary: aiResult.summary,
@@ -64,7 +81,7 @@ export async function aggregateTripPlan(tripInput, options = {}) {
         errors: [...(cached.errors || []).filter((e) => !e.source?.startsWith('ai')), ...(aiResult.aiErrors || [])],
         regenerated: true,
       };
-      const full = ensureFullItinerary(result, tripInput);
+      const full = finalizePlan(result, tripInput);
       setPlanCache(cacheKey, full);
       return full;
     }
@@ -72,7 +89,7 @@ export async function aggregateTripPlan(tripInput, options = {}) {
 
   if (!regenerateAIOnly) {
     const cached = getPlanCache(cacheKey);
-    if (cached) return ensureFullItinerary(cached, tripInput);
+    if (cached) return finalizePlan(cached, tripInput);
   }
 
   return dedupe(cacheKey, () => buildFullPlan(tripInput, cacheKey));
@@ -204,7 +221,11 @@ async function buildFullPlan(tripInput, cacheKey) {
     places: placesWithPhotos,
     optimizer: aiResult.optimizer,
     itinerary: aiResult.itinerary,
-    budget: resolveBudgetAllocation(aiResult.budget, tripInput, { flights, hotels }),
+    budget: resolveBudgetAllocation(aiResult.budget, tripInput, {
+      flights,
+      hotels,
+      activities: aiResult.activities,
+    }),
     packing: aiResult.packing,
     summary: aiResult.summary,
     restaurants: aiResult.restaurants,
@@ -213,7 +234,7 @@ async function buildFullPlan(tripInput, cacheKey) {
     errors,
   };
 
-  const full = ensureFullItinerary(result, tripInput);
+  const full = finalizePlan(result, tripInput);
   setPlanCache(cacheKey, full);
   return full;
 }

@@ -203,6 +203,12 @@ export default function ResultsPage() {
           budget={plan?.budget}
           currency={currency}
           totalBudget={input.budget || plan?.meta?.budget}
+          flights={plan?.flights}
+          hotels={plan?.hotels}
+          activities={plan?.activities}
+          travellers={input.travellers || plan?.meta?.travellers}
+          fromDate={input.fromDate || plan?.meta?.fromDate}
+          toDate={input.toDate || plan?.meta?.toDate}
         />
       ),
     },

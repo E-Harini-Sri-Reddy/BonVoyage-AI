@@ -55,7 +55,8 @@ Return exactly this shape (fill real values; budget amounts must sum to ${ctx.bu
   "safetyTips": ["tip"]
 }
 
-Limits: 3 weatherInsights, 4 activities, exactly ${seedDays} itinerary seed days (day 1 arrival … day ${seedDays} ${dayCount > seedDays ? 'sample mid-trip day — DO NOT pack/checkout yet' : 'departure'}), 2 flightRecommendations, 2 decisions, 6 packing items, 3 restaurants, 2 travelTips, 2 safetyTips. highlights must be unique. summary.text must mention the full ${dayCount}-day dates.`,
+Limits: 3 weatherInsights, 4 activities, exactly ${seedDays} itinerary seed days (day 1 arrival … day ${seedDays} ${dayCount > seedDays ? 'sample mid-trip day — DO NOT pack/checkout yet' : 'departure'}), 2 flightRecommendations, 2 decisions, 6 packing items, 3 restaurants, 2 travelTips, 2 safetyTips. highlights must be unique. summary.text must mention the full ${dayCount}-day dates.
+Budget: use REAL non-zero category amounts based on this trip (flight quotes, hotel nights, food for ${dayCount} days × travellers). Do NOT output all zeros. Do NOT use a fixed 40/30/15/10/5 template — weight categories from the trip data, and make category amounts sum to ${ctx.budget}.`,
   };
 }
 
