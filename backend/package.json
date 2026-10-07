@@ -5,6 +5,9 @@
   "description": "BonVoyage AI Express API server",
   "main": "server.js",
   "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",

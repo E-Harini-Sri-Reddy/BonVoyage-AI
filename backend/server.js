@@ -1,16 +1,21 @@
 import app from './src/app.js';
-import { env, getEnvStatus, hasRequiredKeys } from './src/config/env.js';
+import { env, getEnvStatus, hasRequiredKeys, isProd } from './src/config/env.js';
 import { connectDB } from './src/config/database.js';
 
 await connectDB();
 
-app.listen(env.port, () => {
-  console.log(`🚀 BonVoyage AI API running on http://localhost:${env.port}`);
+app.listen(env.port, '0.0.0.0', () => {
+  console.log(`🚀 BonVoyage AI API running on port ${env.port}`);
   console.log(`   Environment: ${env.nodeEnv}`);
-  console.log(`   CORS origin: ${env.corsOrigin}`);
+  console.log(`   CORS origins: ${env.corsOrigins.join(', ')}`);
+  console.log(`   Client URL: ${env.clientUrl}`);
+
+  if (isProd && env.jwtSecret.includes('change_in_production')) {
+    console.warn('⚠️  JWT_SECRET is still the default — set a strong secret in Render env vars.');
+  }
 
   if (!hasRequiredKeys()) {
-    console.warn('\n⚠️  Some API keys are missing. Copy backend/.env.example → backend/.env');
+    console.warn('\n⚠️  Some API keys are missing.');
     getEnvStatus().forEach(({ key, configured }) => {
       if (!configured) console.warn(`   ✗ ${key}`);
     });
@@ -19,5 +24,6 @@ app.listen(env.port, () => {
     console.log('   API keys: all configured ✓');
   }
 
-  console.log(`   Diagnostics: http://localhost:${env.port}/api/health/apis\n`);
+  console.log(`   Health: /api/health`);
+  console.log(`   Diagnostics: /api/health/apis\n`);
 });

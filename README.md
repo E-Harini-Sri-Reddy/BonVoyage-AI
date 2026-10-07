@@ -68,6 +68,20 @@ npm run dev
 npm run build
 ```
 
+### Deploy on Render
+
+See **[docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md)** for step-by-step instructions.
+
+Quick summary (one Web Service from repo root):
+
+| Setting | Value |
+|---------|--------|
+| Build Command | `npm run render-build` |
+| Start Command | `npm start` |
+| Health Check | `/api/health` |
+
+Set `CORS_ORIGIN` and `CLIENT_URL` to your Render URL after the first deploy, and set `VITE_GOOGLE_CLIENT_ID` before building so Google Sign-In works in production.
+
 ## API Keys Required (Phase 4+)
 
 | Service | Env Variable | Get Key |

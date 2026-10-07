@@ -20,16 +20,17 @@ apiClient.interceptors.response.use(
       return Promise.reject(new Error('Rate limit reached. Please wait a moment and try again.'));
     }
 
-    // Vite proxy returns 502 when the Express backend is restarting or offline
     if (status === 502 || status === 503 || status === 504) {
       return Promise.reject(
-        new Error('API server is temporarily unavailable. Make sure the backend is running on port 5000.')
+        new Error(
+          'API temporarily unavailable (service waking up or restarting). Wait a few seconds and retry.'
+        )
       );
     }
 
     if (error.code === 'ERR_NETWORK' || message.includes('Network Error')) {
       return Promise.reject(
-        new Error('Cannot reach the API. Start the app with npm run dev from the project root.')
+        new Error('Cannot reach the API. Check your connection or that the server is running.')
       );
     }
 
