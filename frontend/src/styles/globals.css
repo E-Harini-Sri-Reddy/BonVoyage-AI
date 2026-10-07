@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply scroll-smooth antialiased;
+  }
+
+  body {
+    @apply font-sans bg-surface-light text-slate-800 dark:bg-surface-dark dark:text-slate-100;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-white/70 dark:bg-slate-900/60 backdrop-blur-glass border border-white/30 dark:border-slate-700/50 rounded-2xl shadow-glass;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold text-white
+           bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-700 hover:to-primary-600
+           shadow-md hover:shadow-lg transition-all duration-200 active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold
+           text-primary-700 dark:text-primary-300 bg-white/80 dark:bg-slate-800/80
+           border border-primary-200 dark:border-primary-800
+           hover:bg-primary-50 dark:hover:bg-slate-800 transition-all duration-200;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700
+           bg-white/80 dark:bg-slate-800/80 text-slate-800 dark:text-slate-100
+           placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500/40
+           focus:border-primary-500 transition-all duration-200;
+  }
+
+  .page-gradient {
+    @apply min-h-screen bg-gradient-to-br from-slate-50 via-teal-50/30 to-cyan-50/40
+           dark:from-slate-950 dark:via-slate-900 dark:to-teal-950/30;
+  }
+
+  .section-divider {
+    @apply border-t border-slate-200/60 dark:border-slate-700/60;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@media print {
+  header, footer, .no-print {
+    display: none !important;
+  }
+
+  .glass-panel {
+    background: white !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: none !important;
+  }
+}
