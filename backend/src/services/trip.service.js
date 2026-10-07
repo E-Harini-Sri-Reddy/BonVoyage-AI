@@ -8,6 +8,24 @@ import { generateAIContent, mergeLocalInfoTips } from './groq.service.js';
 import { assessBudget, resolveBudgetAllocation } from './budget.service.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { dedupe, getPlanCache, setPlanCache, buildPlanCacheKey } from '../utils/requestDedup.js';
+import { expandItineraryToFullTrip, tripDayCount } from '../utils/itinerary.js';
+
+function ensureFullItinerary(result, tripInput) {
+  if (!result) return result;
+  const expected = tripDayCount(tripInput.fromDate, tripInput.toDate);
+  const current = result.itinerary?.length || 0;
+  if (current >= expected) return result;
+
+  return {
+    ...result,
+    itinerary: expandItineraryToFullTrip(result.itinerary || [], tripInput, {
+      places: result.places,
+      restaurants: result.restaurants,
+      hotels: result.hotels,
+      destinationCity: result.geocoding?.destination?.city || tripInput.destination,
+    }),
+  };
+}
 
 export async function aggregateTripPlan(tripInput, options = {}) {
   const { regenerateAIOnly = false } = options;
@@ -46,14 +64,15 @@ export async function aggregateTripPlan(tripInput, options = {}) {
         errors: [...(cached.errors || []).filter((e) => !e.source?.startsWith('ai')), ...(aiResult.aiErrors || [])],
         regenerated: true,
       };
-      setPlanCache(cacheKey, result);
-      return result;
+      const full = ensureFullItinerary(result, tripInput);
+      setPlanCache(cacheKey, full);
+      return full;
     }
   }
 
   if (!regenerateAIOnly) {
     const cached = getPlanCache(cacheKey);
-    if (cached) return cached;
+    if (cached) return ensureFullItinerary(cached, tripInput);
   }
 
   return dedupe(cacheKey, () => buildFullPlan(tripInput, cacheKey));
@@ -194,6 +213,7 @@ async function buildFullPlan(tripInput, cacheKey) {
     errors,
   };
 
-  setPlanCache(cacheKey, result);
-  return result;
+  const full = ensureFullItinerary(result, tripInput);
+  setPlanCache(cacheKey, full);
+  return full;
 }

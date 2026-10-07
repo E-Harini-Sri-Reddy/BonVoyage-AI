@@ -3,6 +3,7 @@ import { env } from '../config/env.js';
 import { buildTripContext } from '../prompts/context.js';
 import { masterTripPrompt, repairTripPrompt } from '../prompts/master.prompt.js';
 import { getCached, setCache } from '../utils/cache.js';
+import { expandItineraryToFullTrip, tripDayCount } from '../utils/itinerary.js';
 import crypto from 'crypto';
 
 function isGroqConfigured() {
@@ -21,9 +22,17 @@ function buildAICacheKey(tripInput, geo) {
     pets: tripInput.travellingWithPets,
     disabilities: tripInput.travellingWithDisabilities,
     dest: geo?.destination?.lat,
-    v: 2,
+    v: 3,
   });
   return `ai-master:${crypto.createHash('md5').update(raw).digest('hex')}`;
+}
+
+function finalizeItinerary(itinerary, tripInput, apiData, geo) {
+  const enrichedApi = {
+    ...apiData,
+    destinationCity: geo?.destination?.city || tripInput.destination,
+  };
+  return expandItineraryToFullTrip(itinerary || [], tripInput, enrichedApi);
 }
 
 function mergeWeatherInsights(weather, insights) {
@@ -81,7 +90,7 @@ function uniqueStrings(list = []) {
   return [...new Set(list.filter(Boolean))];
 }
 
-function buildFallbackFromPlaces(tripInput, apiData) {
+function buildFallbackFromPlaces(tripInput, apiData, geo) {
   const places = apiData.places || [];
   const activities = places.slice(0, 4).map((p) => ({
     title: `Visit ${p.name}`,
@@ -92,25 +101,7 @@ function buildFallbackFromPlaces(tripInput, apiData) {
     location: p.name,
   }));
 
-  const from = new Date(tripInput.fromDate);
-  const to = new Date(tripInput.toDate);
-  const days = Math.max(1, Math.min(5, Math.ceil((to - from) / 86400000) + 1));
-  const itinerary = [];
-  for (let i = 0; i < days; i += 1) {
-    const date = new Date(from);
-    date.setDate(from.getDate() + i);
-    const a = places[i % Math.max(places.length, 1)];
-    const b = places[(i + 1) % Math.max(places.length, 1)];
-    const c = places[(i + 2) % Math.max(places.length, 1)];
-    itinerary.push({
-      day: i + 1,
-      date: date.toISOString().slice(0, 10),
-      morning: a ? `Visit ${a.name}` : 'Explore the city center',
-      afternoon: b ? `Visit ${b.name}` : 'Local lunch and stroll',
-      evening: c ? `Evening near ${c.name}` : 'Dinner and rest',
-      notes: 'Balanced pace with nearby attractions.',
-    });
-  }
+  const total = tripDayCount(tripInput.fromDate, tripInput.toDate);
 
   return {
     activities,
@@ -119,12 +110,12 @@ function buildFallbackFromPlaces(tripInput, apiData) {
       decisions: [
         {
           category: 'Pacing',
-          choice: 'Nearby sights first',
-          reason: 'Minimize travel time between attractions.',
+          choice: `${total}-day balanced plan`,
+          reason: 'Full trip dates covered with arrival, sightseeing, and departure days.',
         },
       ],
     },
-    itinerary,
+    itinerary: finalizeItinerary([], tripInput, apiData, geo),
   };
 }
 
@@ -179,6 +170,7 @@ export async function generateAIContent(tripInput, geo, apiData, { skipCache = f
     if (cached) {
       return {
         ...cached,
+        itinerary: finalizeItinerary(cached.itinerary, tripInput, apiData, geo),
         weather: mergeWeatherInsights(apiData.weather, cached._weatherInsights),
         fromCache: true,
       };
@@ -190,12 +182,13 @@ export async function generateAIContent(tripInput, geo, apiData, { skipCache = f
     if (cached) {
       return {
         ...cached,
+        itinerary: finalizeItinerary(cached.itinerary, tripInput, apiData, geo),
         weather: mergeWeatherInsights(apiData.weather, cached._weatherInsights),
         fromCache: true,
         aiErrors: [{ source: 'ai', message: 'Groq daily limit reached — showing cached AI results.', severity: 'warning' }],
       };
     }
-    const fallback = buildFallbackFromPlaces(tripInput, apiData);
+    const fallback = buildFallbackFromPlaces(tripInput, apiData, geo);
     return {
       ...buildEmptyAI(apiData, 'Groq daily token limit reached — showing place-based itinerary.'),
       ...fallback,
@@ -217,7 +210,8 @@ export async function generateAIContent(tripInput, geo, apiData, { skipCache = f
           decisions: optimized.decisions || [],
         }
       : result.optimizer || null;
-    const itinerary = optimized.days?.length ? optimized.days : result.itinerary || [];
+    const rawItinerary = optimized.days?.length ? optimized.days : result.itinerary || [];
+    const itinerary = finalizeItinerary(rawItinerary, tripInput, apiData, geo);
 
     const output = {
       weather: mergeWeatherInsights(apiData.weather, result.weatherInsights),
@@ -237,10 +231,9 @@ export async function generateAIContent(tripInput, geo, apiData, { skipCache = f
       _weatherInsights: result.weatherInsights,
     };
 
-    if (!output.activities.length || !output.itinerary.length) {
-      const fb = buildFallbackFromPlaces(tripInput, apiData);
-      if (!output.activities.length) output.activities = fb.activities;
-      if (!output.itinerary.length) output.itinerary = fb.itinerary;
+    if (!output.activities.length) {
+      const fb = buildFallbackFromPlaces(tripInput, apiData, geo);
+      output.activities = fb.activities;
       if (!output.optimizer) output.optimizer = fb.optimizer;
     }
     if (!output.packing.length) output.packing = buildFallbackPacking(tripInput, apiData.weather);
@@ -254,7 +247,7 @@ export async function generateAIContent(tripInput, geo, apiData, { skipCache = f
       : error.message;
 
     aiErrors.push({ source: 'ai', message, severity: 'warning' });
-    const fb = buildFallbackFromPlaces(tripInput, apiData);
+    const fb = buildFallbackFromPlaces(tripInput, apiData, geo);
     return {
       weather: apiData.weather,
       activities: fb.activities,

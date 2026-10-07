@@ -18,14 +18,16 @@ export function masterTripPrompt(ctx) {
       (new Date(ctx.toDate) - new Date(ctx.fromDate)) / (1000 * 60 * 60 * 24)
     ) + 1
   );
-  const itineraryDays = Math.min(dayCount, 5);
+  // Ask the model for a seed plan only; code expands to the full trip length.
+  const seedDays = Math.min(dayCount, 7);
 
   return {
     system: `You are BonVoyage AI. Reply with ONE valid JSON object only — no markdown, no comments, no trailing commas.
-Keep every string short (under 120 chars). Use only place names from CONTEXT.
+Keep every string short (under 100 chars). Use only place names from CONTEXT.
+CRITICAL: This trip is ${dayCount} days (${ctx.fromDate} to ${ctx.toDate}). Day 1 = arrival. ONLY the last seed day may say pack/checkout/return flight. Never end the trip early.
 ${accessibility}
 ${ctx.budgetWarning && !ctx.budgetWarning.sufficient ? `Budget ${ctx.budget} ${ctx.currency} is too low (min ~${ctx.budgetWarning.minimumRecommended}). Say so in summary.budgetNote and prefer free activities.` : ''}`,
-    user: `Trip: ${ctx.destinationCity}, ${ctx.destinationCountry || ''} | ${ctx.fromDate}→${ctx.toDate} | ${ctx.travellers} pax | ${ctx.budget} ${ctx.currency} | ${ctx.tripType}
+    user: `Trip: ${ctx.destinationCity}, ${ctx.destinationCountry || ''} | ${ctx.fromDate}→${ctx.toDate} (${dayCount} days) | ${ctx.travellers} pax | ${ctx.budget} ${ctx.currency} | ${ctx.tripType}
 Interests: ${ctx.interests?.join(', ') || 'general'} | From: ${ctx.originCity || ctx.origin}
 
 CONTEXT:
@@ -53,7 +55,7 @@ Return exactly this shape (fill real values; budget amounts must sum to ${ctx.bu
   "safetyTips": ["tip"]
 }
 
-Limits: 3 weatherInsights, 4 activities, ${itineraryDays} itinerary days, 2 flightRecommendations, 2 decisions, 6 packing items, 3 restaurants, 2 travelTips, 2 safetyTips. highlights must be unique strings.`,
+Limits: 3 weatherInsights, 4 activities, exactly ${seedDays} itinerary seed days (day 1 arrival … day ${seedDays} ${dayCount > seedDays ? 'sample mid-trip day — DO NOT pack/checkout yet' : 'departure'}), 2 flightRecommendations, 2 decisions, 6 packing items, 3 restaurants, 2 travelTips, 2 safetyTips. highlights must be unique. summary.text must mention the full ${dayCount}-day dates.`,
   };
 }
 
