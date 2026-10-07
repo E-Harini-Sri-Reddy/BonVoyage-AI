@@ -26,7 +26,7 @@ Recommended setup: **one Web Service** that builds the React app and serves it f
 | **Region** | Closest to you |
 | **Runtime** | `Node` |
 | **Root Directory** | *(leave empty — use repo root)* |
-| **Build Command** | `npm run render-build` |
+| **Build Command** | `npm run render-build` *(installs frontend devDeps so Vite can build even when NODE_ENV=production)* |
 | **Start Command** | `npm start` |
 | **Instance type** | Free (or paid if you need fewer cold starts) |
 
